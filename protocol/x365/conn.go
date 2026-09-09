@@ -81,13 +81,13 @@ func requestLen(destination M.Socksaddr) int {
 }
 
 func encodeRequest(buffer *buf.Buffer, key [16]byte, command byte, destination M.Socksaddr) error {
-	return common.Error(
-		buffer.Write(magic[:]),
+	common.Must(
+		common.Error(buffer.Write(magic[:])),
 		buffer.WriteByte(Version),
 		buffer.WriteByte(command),
-		buffer.Write(key[:]),
-		vmess.AddressSerializer.WriteAddrPort(buffer, destination),
+		common.Error(buffer.Write(key[:])),
 	)
+	return vmess.AddressSerializer.WriteAddrPort(buffer, destination)
 }
 
 // WriteRequest writes the x365 request header followed by an optional payload.
