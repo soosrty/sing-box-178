@@ -1882,27 +1882,15 @@ jobs:
           # (same as FlClash's --no-codesign flow). Entitlements files are
           # matched by bundle name when present; the packet tunnel extension
           # cannot run without its networkextension entitlement.
-          sign_bundle() {
-            bundle="$1"
-            name=$(basename "$bundle")
-            name="${name%.appex}"
-            ents=""
-            for candidate in "$name/$name.entitlements" "$name.entitlements"; do
-              if [ -f "clients/apple/$candidate" ]; then
-                ents="clients/apple/$candidate"
-                break
-              fi
-            done
-            if [ -n "$ents" ]; then
-              codesign --force --sign - --entitlements "$ents" "$bundle"
-            else
-              codesign --force --sign - "$bundle"
-            fi
-          }
-          for ext in "$APP"/PlugIns/*.appex "$APP"/XPCServices/*.xpc; do
-            [ -e "$ext" ] || continue
-            sign_bundle "$ext"
-          done
+          # Deep-sign every nested binary first: plain `codesign --sign -` does
+          # NOT recurse, and the Go core lives in Frameworks/Library.framework -
+          # leaving it unsigned kills the app at launch (dyld refuses unsigned
+          # nested code). --deep covers Frameworks, PlugIns and Extensions.
+          codesign --force --deep --sign - "$APP"
+          # Re-sign the bundles that need restricted entitlements over the deep
+          # pass (deep signing drops per-target entitlements).
+          codesign --force --sign - --entitlements clients/apple/Extension/Extension.entitlements \
+            "$APP/PlugIns/Extension.appex"
           codesign --force --sign - --entitlements clients/apple/SFI/SFI.entitlements "$APP"
           codesign --verify --deep "$APP"
           cd dist
