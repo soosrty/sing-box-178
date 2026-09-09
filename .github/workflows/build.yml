@@ -1878,14 +1878,16 @@ jobs:
           mkdir -p dist/Payload
           cp -R "$APP_PATH" dist/Payload/
           APP=dist/Payload/sing-box.app
-          # iOS kills unsigned Mach-O on launch, so ad-hoc sign everything
-          # (same as FlClash's --no-codesign flow). Entitlements files are
-          # matched by bundle name when present; the packet tunnel extension
-          # cannot run without its networkextension entitlement.
-          # Deep-sign every nested binary first: plain `codesign --sign -` does
-          # NOT recurse, and the Go core lives in Frameworks/Library.framework -
-          # leaving it unsigned kills the app at launch (dyld refuses unsigned
-          # nested code). --deep covers Frameworks, PlugIns and Extensions.
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          # Sideloading installers require these pseudo-team entitlement keys
+          # (the same trick FlClash's --no-codesign flow uses with UNKNOWN000).
+          make_ents() {
+            src="$1"; out="$2"
+            sed "s#<dict>#<dict><key>application-identifier</key><string>UNKNOWN000.${BUNDLE_ID}</string><key>com.apple.developer.team-identifier</key><string>UNKNOWN000</string>#" \
+              "clients/apple/$src" > "$out"
+          }
+          make_ents SFI/SFI.entitlements /tmp/sfi.entitlements
+          make_ents Extension/Extension.entitlements /tmp/ext.entitlements
           # Sign every nested dylib explicitly first: --deep is documented as
           # unreliable and in practice skips frameworks added via embed
           # frameworks phases (the Go core Library.framework was left unsigned
@@ -1902,12 +1904,14 @@ jobs:
             [ -e "$bundle" ] || continue
             codesign --force --sign - "$bundle"
           done
-          codesign --force --deep --sign - "$APP"
+          codesign --force --deep --sign - --timestamp=none "$APP"
           # Re-sign the bundles that need restricted entitlements over the deep
-          # pass (deep signing drops per-target entitlements).
-          codesign --force --sign - --entitlements clients/apple/Extension/Extension.entitlements \
-            "$APP/PlugIns/Extension.appex"
-          codesign --force --sign - --entitlements clients/apple/SFI/SFI.entitlements "$APP"
+          # pass (deep signing drops per-target entitlements); DER entitlements
+          # are required by modern iOS AMFI.
+          codesign --force --sign - --timestamp=none --generate-entitlement-der \
+            --entitlements /tmp/ext.entitlements "$APP/PlugIns/Extension.appex"
+          codesign --force --sign - --timestamp=none --generate-entitlement-der \
+            --entitlements /tmp/sfi.entitlements "$APP"
           codesign --verify --deep "$APP"
           cd dist
           rm -f "SFI-${VERSION}-ios-arm64-unsigned.ipa"
