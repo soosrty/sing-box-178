@@ -1886,6 +1886,22 @@ jobs:
           # NOT recurse, and the Go core lives in Frameworks/Library.framework -
           # leaving it unsigned kills the app at launch (dyld refuses unsigned
           # nested code). --deep covers Frameworks, PlugIns and Extensions.
+          # Sign every nested dylib explicitly first: --deep is documented as
+          # unreliable and in practice skips frameworks added via embed
+          # frameworks phases (the Go core Library.framework was left unsigned
+          # and dyld killed the app at launch).
+          find "$APP" -name '*.framework' -o -name '*.dylib' | while read -r nested; do
+            if [ -d "$nested" ]; then
+              bin=$(basename "$nested" .framework)
+              [ -f "$nested/$bin" ] && codesign --force --sign - "$nested"
+            else
+              codesign --force --sign - "$nested"
+            fi
+          done
+          for bundle in "$APP"/PlugIns/*.appex "$APP"/Extensions/*.appex; do
+            [ -e "$bundle" ] || continue
+            codesign --force --sign - "$bundle"
+          done
           codesign --force --deep --sign - "$APP"
           # Re-sign the bundles that need restricted entitlements over the deep
           # pass (deep signing drops per-target entitlements).
