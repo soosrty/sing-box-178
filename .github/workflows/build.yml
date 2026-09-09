@@ -1909,3 +1909,8 @@ jobs:
           rm -f "SFI-${VERSION}-ios-arm64-unsigned.ipa"
           zip -qry "SFI-${VERSION}-ios-arm64-unsigned.ipa" Payload
           rm -rf Payload
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SFI-ios-arm64-unsigned
+          path: dist/*.ipa
