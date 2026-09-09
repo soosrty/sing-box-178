@@ -210,6 +210,22 @@ func (s *CommandServer) Close() {
 	s.powerManager.Close()
 }
 
+// Screen and lock events feed the iOS client's power report UI (the Apple
+// client dev branch calls these through LibboxCommandServer).
+func (s *CommandServer) RecordScreenState(on bool) {
+	recorder := s.powerManager.Recorder()
+	if recorder != nil {
+		recorder.RecordScreenState(on)
+	}
+}
+
+func (s *CommandServer) RecordLockState(locked bool) {
+	recorder := s.powerManager.Recorder()
+	if recorder != nil {
+		recorder.RecordLockState(locked)
+	}
+}
+
 type OverrideOptions struct {
 	AutoRedirect   bool
 	IncludePackage StringIterator

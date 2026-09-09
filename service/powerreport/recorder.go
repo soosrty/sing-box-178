@@ -342,6 +342,24 @@ func (r *Recorder) RecordPauseEvent(event int) {
 	}
 }
 
+// Screen and lock events feed the iOS client's power report UI (the Apple
+// client dev branch calls these through LibboxCommandServer).
+func (r *Recorder) RecordScreenState(on bool) {
+	if on {
+		r.recordPlatformEvent(eventTypeScreenOn)
+	} else {
+		r.recordPlatformEvent(eventTypeScreenOff)
+	}
+}
+
+func (r *Recorder) RecordLockState(locked bool) {
+	if locked {
+		r.recordPlatformEvent(eventTypeDeviceLock)
+	} else {
+		r.recordPlatformEvent(eventTypeDeviceUnlock)
+	}
+}
+
 func (r *Recorder) CountConnectionOpened() {
 	r.connectionsOpened.Add(1)
 }
