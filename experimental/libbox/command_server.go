@@ -300,6 +300,16 @@ func (s *CommandServer) Pause() {
 	}
 }
 
+// WakeNow ends the device pause immediately; the Apple client dev branch calls
+// it from the screen-on notification handler.
+func (s *CommandServer) WakeNow() {
+	instance := s.StartedService.Instance()
+	if instance == nil || instance.PauseManager() == nil {
+		return
+	}
+	instance.PauseManager().DeviceWake()
+}
+
 func (s *CommandServer) endDevicePause() {
 	instance := s.StartedService.Instance()
 	if instance == nil || instance.PauseManager() == nil {
