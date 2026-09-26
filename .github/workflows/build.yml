@@ -1879,11 +1879,22 @@ jobs:
           cp -R "$APP_PATH" dist/Payload/
           APP=dist/Payload/sing-box.app
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          # Xcode expands $(...) inside entitlements during ProcessProductPackaging,
+          # which never runs when CODE_SIGNING_ALLOWED=NO, and codesign does NOT expand
+          # them either. Signing the raw file therefore grants the app group literally
+          # "$(APP_GROUP_IDENTIFIER)"; containerURL(forSecurityApplicationGroupIdentifier:)
+          # then returns nil and FilePath.sharedDirectory! traps at launch (black screen,
+          # instant exit). Substitute the real values from the built Info.plist.
+          BASE_ID=$(/usr/libexec/PlistBuddy -c 'Print :BasePackageIdentifier' "$APP/Info.plist")
+          GROUP_ID=$(/usr/libexec/PlistBuddy -c 'Print :AppGroupIdentifier' "$APP/Info.plist")
+          echo "BASE_PACKAGE_IDENTIFIER=$BASE_ID APP_GROUP_IDENTIFIER=$GROUP_ID"
           # Sideloading installers require these pseudo-team entitlement keys
           # (the same trick FlClash's --no-codesign flow uses with UNKNOWN000).
           make_ents() {
             src="$1"; out="$2"
-            sed "s#<dict>#<dict><key>application-identifier</key><string>UNKNOWN000.${BUNDLE_ID}</string><key>com.apple.developer.team-identifier</key><string>UNKNOWN000</string>#" \
+            sed -e "s#\$(BASE_PACKAGE_IDENTIFIER)#${BASE_ID}#g" \
+                -e "s#\$(APP_GROUP_IDENTIFIER)#${GROUP_ID}#g" \
+                -e "s#<dict>#<dict><key>application-identifier</key><string>UNKNOWN000.${BUNDLE_ID}</string><key>com.apple.developer.team-identifier</key><string>UNKNOWN000</string>#" \
               "clients/apple/$src" > "$out"
           }
           make_ents SFI/SFI.entitlements /tmp/sfi.entitlements
@@ -1913,6 +1924,17 @@ jobs:
           codesign --force --sign - --timestamp=none --generate-entitlement-der \
             --entitlements /tmp/sfi.entitlements "$APP"
           codesign --verify --deep "$APP"
+          # Guard: no unexpanded $(...) may survive into the signed entitlements.
+          for target in "$APP" "$APP/PlugIns/Extension.appex"; do
+            codesign -d --entitlements - --xml "$target" > /tmp/ent-check.xml 2>/dev/null
+            if grep -q '\$(' /tmp/ent-check.xml; then
+              echo "FATAL: unexpanded placeholder in $target"
+              cat /tmp/ent-check.xml
+              exit 1
+            fi
+          done
+          echo "--- signed entitlements (app) ---"
+          codesign -d --entitlements - --xml "$APP" | grep -E 'application-groups|container-identifiers|application-identifier' -A1
           cd dist
           rm -f "SFI-${VERSION}-ios-arm64-unsigned.ipa"
           zip -qry "SFI-${VERSION}-ios-arm64-unsigned.ipa" Payload
